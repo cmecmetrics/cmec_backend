@@ -7,6 +7,7 @@ from chalicelib import hyperslab_parse
 from flask import Flask, request, jsonify, Response
 import json
 app = Flask(__name__)
+cors = CORS(app)
 
 # Enable DEBUG logs.
 app.debug = True
