@@ -1,5 +1,9 @@
 import json
 import os
+import boto3
+
+s3 = boto3.client('s3')
+BUCKET_NAME = "cmec-data"
 
 MODEL_NAMES = [
     "bcc-csm1-1",
@@ -168,8 +172,10 @@ def extract_scalar(options_array, output_file=False):
                 options_array[0], options_array[1], options_array[2], options_array[3]
     )
     if output_file:
-        with open(os.path.join(DATA_DIRECTORY, file_name), "w") as write_file:
-            json.dump(scalar_data, write_file, sort_keys=True)
+        # with open(os.path.join(DATA_DIRECTORY, file_name), "w") as write_file:
+        #     json.dump(scalar_data, write_file, sort_keys=True)
+        s3.upload_fileobj(
+            file_name, BUCKET_NAME, file_name.split(".")[0])
 
     return {"data": {options_array[3]: output}, "file_name": file_name}
 
@@ -262,15 +268,26 @@ def extract_one_dimension(options_array, output_file=False):
         )
 
     if output_file:
-        with open(os.path.join(DATA_DIRECTORY, file_name), "w") as write_file:
-            json.dump(scalar_data, write_file, sort_keys=True)
+        # with open(os.path.join(DATA_DIRECTORY, file_name), "w") as write_file:
+        #     json.dump(scalar_data, write_file, sort_keys=True)
+
+        scalar_data_json = json.dumps(scalar_data, ensure_ascii=False)
+
+        s3_resource = boto3.resource('s3')
+        s3 = boto3.resource('s3').Object(
+            BUCKET_NAME, file_name).put(Body=scalar_data_json)
+        # s3.upload_fileobj(
+        #     temp, BUCKET_NAME, file_name.split(".")[0])
 
     return {"data": temp, "file_name": file_name}
 
 
 def extract_two_dimension(options_array, output_file=False):
+    print("extract two dimension called.")
     with open("chalicelib/json_data_files/ilamb_data_hyperslab_format.json") as scalar_json:
         scalar_data = json.load(scalar_json)
+
+    print("scalar_data:", scalar_data)
 
     json_structure = scalar_data["DIMENSIONS"]["json_structure"]
 
@@ -323,9 +340,13 @@ def extract_two_dimension(options_array, output_file=False):
         file_name = "{}_{}_{}_{}_scalar.json".format(
             options_array[0], options_array[1], "all", options_array[3]
         )
+        print("hyperslab file name:", file_name)
     if output_file:
-        with open(os.path.join(DATA_DIRECTORY, file_name), "w") as write_file:
-            json.dump(scalar_data, write_file, sort_keys=True)
+        # with open(os.path.join(DATA_DIRECTORY, file_name), "w") as write_file:
+        #     json.dump(scalar_data, write_file, sort_keys=True)
+        print("uploading file to S3 Bucket")
+        s3.upload_fileobj(
+            file_name, BUCKET_NAME, file_name.split(".")[0])
 
         return {"data": temp, "file_name": file_name}
 
