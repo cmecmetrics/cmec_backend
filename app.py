@@ -2,6 +2,7 @@ from chalice import Chalice, Response
 from chalice import BadRequestError
 import logging
 from chalicelib import hyperslab_parse
+from flask_cors import CORS
 
 # app = Chalice(app_name='cmec_backend')
 from flask import Flask, request, jsonify, Response
