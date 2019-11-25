@@ -1,34 +1,44 @@
-from chalice import Chalice, Response
-from chalice import BadRequestError
+import json
 import logging
+import os
+
+# app = Chalice(app_name='cmec_backend')
+from flask import Flask, Response, jsonify, request
+from flask_sqlalchemy import SQLAlchemy
+
+from chalice import BadRequestError, Chalice, Response
 from chalicelib import hyperslab_parse
 from flask_cors import CORS
 
-# app = Chalice(app_name='cmec_backend')
-from flask import Flask, request, jsonify, Response
-import json
+
 app = Flask(__name__)
-cors = CORS(app)
+CORS(app)
+app.config.from_object(os.environ["APP_SETTINGS"])
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+db = SQLAlchemy(app)
+
+from models import Region
+
 
 # Enable DEBUG logs.
 app.debug = True
 # app.log.setLevel(logging.DEBUG)
+print(os.environ["APP_SETTINGS"])
 
 
-@app.route('/')
+@app.route("/")
 def index():
-    return {'hello': 'world'}
+    return {"hello": "world"}
 
 
 # @app.route('/hyperslab', methods=['POST'], content_types=['application/json'], cors=True)
-@app.route('/hyperslab', methods=['POST'])
+@app.route("/hyperslab", methods=["POST"])
 def hyperslab():
     print("This is a debug statement")
     print("json_body:")
     print(request.json)
     data = request.json
-    options = [data["region"], data["metric"],
-               data["scalar"], data["model"]]
+    options = [data["region"], data["metric"], data["scalar"], data["model"]]
     print("options:")
     print(options)
 
@@ -38,13 +48,17 @@ def hyperslab():
         output_file = hyperslab_parse.extract_scalar(options)["file_name"]
     elif wildcards == 1:
         output_file = hyperslab_parse.extract_one_dimension(options, output_file=True)[
-            "file_name"]
+            "file_name"
+        ]
     elif wildcards == 2:
         output_file = hyperslab_parse.extract_two_dimension(options, output_file=True)[
-            "file_name"]
+            "file_name"
+        ]
     else:
         raise BadRequestError(
-            "Invalid number of hyperslabs chosen. The maximum number of hyperslabs that can be selected is 2. '%s' hyperslabs were chosen in your request" % (wildcards))
+            "Invalid number of hyperslabs chosen. The maximum number of hyperslabs that can be selected is 2. '%s' hyperslabs were chosen in your request"
+            % (wildcards)
+        )
 
     print(output_file)
     # upload tmp file to s3 bucket
@@ -54,8 +68,8 @@ def hyperslab():
     #                 status_code=200,
     #                 headers={'Content-Type': 'text/plain'})
     output_file_response = json.dumps(output_file)
-    return Response(output_file_response,
-                    status=200,  mimetype='application/json')
+    return Response(output_file_response, status=200, mimetype="application/json")
+
 
 # def upload_to_s3(file_name):
 
