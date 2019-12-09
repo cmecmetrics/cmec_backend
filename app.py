@@ -17,7 +17,7 @@ app.config.from_object(os.environ["APP_SETTINGS"])
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
-from models import Region
+# from models import Region
 
 
 # Enable DEBUG logs.
@@ -60,7 +60,7 @@ def hyperslab():
             % (wildcards)
         )
 
-    print(output_file)
+    # print(output_file)
     # upload tmp file to s3 bucket
     # s3_client.upload_file(output_file, "cmec-data", output_file)
 

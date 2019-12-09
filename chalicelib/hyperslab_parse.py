@@ -96,9 +96,9 @@ def reformat_json_for_hyperslabs(scalar_data):
     obj = {}
     for region in regions:
         obj[region] = {}
-        print("region:", region)
+        # print("region:", region)
         for catalogue in metric_catalogues:
-            print("catalogue:", catalogue)
+            # print("catalogue:", catalogue)
             score_dict = {
                 key.rsplit(" ", 1)[0]: value
                 for (key, value) in scalar_data[catalogue].items()
@@ -113,7 +113,7 @@ def reformat_json_for_hyperslabs(scalar_data):
             metrics = scalar_data[catalogue]["children"]
             if metrics:
                 for metric, value in metrics.items():
-                    print("metric:", metric)
+                    # print("metric:", metric)
                     metric_score_dict = {
                         key.rsplit(" ", 1)[0]: value
                         for (key, value) in value.items()
@@ -287,7 +287,7 @@ def extract_two_dimension(options_array, output_file=False):
     with open("chalicelib/json_data_files/ilamb_data_hyperslab_format.json") as scalar_json:
         scalar_data = json.load(scalar_json)
 
-    print("scalar_data:", scalar_data)
+    # print("scalar_data:", scalar_data)
 
     json_structure = scalar_data["DIMENSIONS"]["json_structure"]
 
@@ -323,15 +323,15 @@ def extract_two_dimension(options_array, output_file=False):
             if options_array[1] in metric_name
         ]
         for metric in metrics:
-            print("metric:", metric)
+            # print("metric:", metric)
             temp[options_array[0]][metric] = {}
             keys = scalar_data["RESULTS"][options_array[0]][metric].keys()
             for key in keys:
-                print("key:", key)
+                # print("key:", key)
                 key_output = extract_one_dimension(
                     [options_array[0], metric, key, options_array[3]]
                 )["data"]
-                print("key_output:", key_output)
+                # print("key_output:", key_output)
                 temp[options_array[0]][metric][key] = key_output[options_array[0]][
                     metric
                 ][key]
@@ -340,7 +340,7 @@ def extract_two_dimension(options_array, output_file=False):
         file_name = "{}_{}_{}_{}_scalar.json".format(
             options_array[0], options_array[1], "all", options_array[3]
         )
-        print("hyperslab file name:", file_name)
+        # print("hyperslab file name:", file_name)
     if output_file:
         # with open(os.path.join(DATA_DIRECTORY, file_name), "w") as write_file:
         #     json.dump(scalar_data, write_file, sort_keys=True)
