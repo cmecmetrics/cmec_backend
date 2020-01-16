@@ -34,6 +34,7 @@ MODEL_NAMES = [
 ]
 
 DATA_DIRECTORY = "chalicelib/json_data_files"
+S3 = boto3.resource('s3')
 
 
 def load_json_data():
@@ -316,6 +317,19 @@ def reformat_json_for_hyperslabs(scalar_data):
         json.dump(output, write_file, sort_keys=True)
 
 
+def write_to_file(file_name, data, DATA_DIRECTORY="json_data_files/Hyperslab_files"):
+    file_name = file_name.replace(" ", "_")
+    with open(os.path.join(DATA_DIRECTORY, file_name), "w") as write_file:
+        json.dump(data, write_file, sort_keys=True)
+
+
+def upload_to_s3(file_name, data):
+    scalar_data_json = json.dumps(data, ensure_ascii=False)
+
+    file_name = file_name.replace(" ", "_")
+    S3.Object(BUCKET_NAME, file_name).put(Body=scalar_data_json)
+
+
 def extract_scalar(options_array, hyperslab_data=None, output_file=False):
     region, metric, scalar, model = options_array
     if not hyperslab_data:
@@ -329,13 +343,11 @@ def extract_scalar(options_array, hyperslab_data=None, output_file=False):
     except KeyError:
         output = -999
 
-    scalar_data["RESULTS"] = {region: {metric: {scalar: {model: output}}}}
+    # scalar_data["RESULTS"] = {region: {metric: {scalar: {model: output}}}}
 
     file_name = "{}_{}_{}_{}_scalar.json".format(region, metric, scalar, model)
     if output_file:
-        file_name = file_name.replace(" ", "_")
-        s3.upload_fileobj(
-            file_name, BUCKET_NAME, file_name.split(".")[0])
+        write_to_file(file_name, output)
 
     return {"data": {model: output}, "file_name": file_name}
 
@@ -352,6 +364,7 @@ def extract_one_dimension(options_array, hyperslab_data=None, output_file=False,
 
     json_structure = scalar_data["DIMENSIONS"]["json_structure"]
 
+    output = {"RESULTS": {}}
     if region_option == "*":
         keys = scalar_data["RESULTS"].keys()
         temp = {}
@@ -365,25 +378,25 @@ def extract_one_dimension(options_array, hyperslab_data=None, output_file=False,
                     scalar_option: extract_scalar(
                         [key, metric, scalar_option, model_option], hyperslab_data=scalar_data_copy)["data"]
                 }
-        scalar_data["RESULTS"] = temp
-        file_name = "{}_{}_{}_{}_scalar.json".format(
+        output["RESULTS"] = temp
+        file_name = "{}_{}_{}_{}.json".format(
             "*", metric_option, scalar_option, model_option)
     if metric_option == "*":
-        keys = scalar_data["RESULTS"][region_option].keys()
+        metrics = scalar_data["RESULTS"][region_option].keys()
         temp = {region_option: {}}
-        for key in keys:
-            temp[region_option][key] = {
+        for metric in metrics:
+            temp[region_option][metric] = {
                 scalar_option: extract_scalar(
-                    [region_option, key, scalar_option, model_option], hyperslab_data=scalar_data_copy)["data"]
+                    [region_option, metric, scalar_option, model_option], hyperslab_data=scalar_data_copy)["data"]
             }
 
-        scalar_data["RESULTS"] = temp
-        file_name = "{}_{}_{}_{}_scalar.json".format(
+        output["RESULTS"] = temp
+        file_name = "{}_{}_{}_{}.json".format(
             region_option, "*", scalar_option, model_option
         )
 
     if scalar_option == "*":
-        keys = scalar_data["RESULTS"][region_option][metric_option].keys()
+        scalars = scalar_data["RESULTS"][region_option][metric_option].keys()
         metrics = [
             metric_name
             for metric_name in scalar_data["RESULTS"][region_option].keys()
@@ -392,11 +405,12 @@ def extract_one_dimension(options_array, hyperslab_data=None, output_file=False,
         temp = {region_option: {}}
         for metric in metrics:
             temp[region_option][metric] = {}
-            for key in keys:
-                temp[region_option][metric][key] = extract_scalar(
-                    [region_option, metric, key, model_option], hyperslab_data=scalar_data_copy)["data"]
-        scalar_data["RESULTS"] = temp
-        file_name = "{}_{}_{}_{}_scalar.json".format(
+            for scalar in scalars:
+                temp[region_option][metric][scalar] = extract_scalar(
+                    [region_option, metric, scalar, model_option], hyperslab_data=scalar_data_copy)["data"]
+
+        output["RESULTS"] = temp
+        file_name = "{}_{}_{}_{}.json".format(
             region_option, metric_option, "*", model_option
         )
     if model_option == "*":
@@ -408,35 +422,28 @@ def extract_one_dimension(options_array, hyperslab_data=None, output_file=False,
         ]
         for metric in metrics:
             try:
-                keys = scalar_data["RESULTS"][region_option][metric][
+                models = scalar_data["RESULTS"][region_option][metric][
                     scalar_option
                 ].keys()
             except KeyError:
-                keys = []
+                models = []
             temp[region_option][metric] = {scalar_option: {}}
-            for key in keys:
-                temp[region_option][metric][scalar_option][key] = extract_scalar(
+            for model in models:
+                temp[region_option][metric][scalar_option][model] = extract_scalar(
                     [region_option, metric, scalar_option,
-                        key], hyperslab_data=scalar_data
-                )["data"].get(key)
-        scalar_data["RESULTS"] = temp
-        file_name = "{}_{}_{}_{}_scalar.json".format(
+                        model], hyperslab_data=scalar_data
+                )["data"].get(model)
+
+        output["RESULTS"] = temp
+        file_name = "{}_{}_{}_{}.json".format(
             region_option, metric_option, scalar_option, "*"
         )
 
     if output_file:
-        with open(os.path.join(DATA_DIRECTORY, file_name), "w") as write_file:
-            json.dump(scalar_data, write_file, sort_keys=True)
+        write_to_file(file_name, output)
 
     if upload:
-        scalar_data_json = json.dumps(scalar_data, ensure_ascii=False)
-
-        s3_resource = boto3.resource('s3')
-        file_name = file_name.replace(" ", "_")
-        s3 = boto3.resource('s3').Object(
-            BUCKET_NAME, file_name).put(Body=scalar_data_json)
-        # s3.upload_fileobj(
-        #     temp, BUCKET_NAME, file_name.split(".")[0])
+        upload_to_s3(file_name, output)
 
     return {"data": temp, "file_name": file_name}
 
@@ -453,16 +460,21 @@ def extract_two_dimension(options_array, hyperslab_data=None, output_file=False,
     print("extract two dimension called.")
 
     json_structure = scalar_data["DIMENSIONS"]["json_structure"]
+    output = {"RESULTS": {}}
 
+    temp = {}
     if region_option == "*":
         regions = scalar_data["RESULTS"].keys()
         for region in regions:
             key_output = extract_one_dimension(
                 [region, metric_option, scalar_option, model_option], hyperslab_data=scalar_data_copy)["data"]
-            scalar_data["RESULTS"][region] = key_output[region]
+            temp[region] = key_output[region]
+            # output["RESULTS"][region] = key_output[region]
 
-        file_name = "{}_{}_{}_{}_scalar.json".format(
+        output["RESULTS"] = temp
+        file_name = "{}_{}_{}_{}.json".format(
             "*", metric_option, scalar_option, model_option)
+
     elif metric_option == "*":
         metrics = scalar_data["RESULTS"][region_option].keys()
         temp = {region_option: {}}
@@ -473,10 +485,10 @@ def extract_two_dimension(options_array, hyperslab_data=None, output_file=False,
             )["data"]
             temp[region_option][metric] = key_output[region_option][metric]
 
-        scalar_data["RESULTS"] = temp
-        file_name = "{}_{}_{}_{}_scalar.json".format(
-            region_option, "*", scalar_option, model_option
-        )
+        output["RESULTS"] = temp
+        file_name = "{}_{}_{}_{}.json".format(
+            region_option, "*", scalar_option, model_option)
+
     elif scalar_option == "*":
         temp = {region_option: {}}
         metrics = [
@@ -486,45 +498,39 @@ def extract_two_dimension(options_array, hyperslab_data=None, output_file=False,
         ]
         for metric in metrics:
             temp[region_option][metric] = {}
-            keys = scalar_data["RESULTS"][region_option][metric].keys()
+            scalars = scalar_data["RESULTS"][region_option][metric].keys()
             print("metric:", metric)
-            for key in keys:
-                print("key:", key)
+            for scalar in scalars:
                 try:
-                    key_output = extract_one_dimension(
-                        [region_option, metric, key,
+                    scalar_output = extract_one_dimension(
+                        [region_option, metric, scalar,
                             model_option], hyperslab_data=scalar_data_copy
                     )["data"]
                 except TypeError:
                     print("region_option:", region_option)
                     print("metric:", metric)
-                    print("key:", key)
+                    print("scalar:", scalar)
                     print("model_option:", model_option)
-                    key_output = extract_one_dimension(
-                        [region_option, metric, key,
+                    scalar_output = extract_one_dimension(
+                        [region_option, metric, scalar,
                             model_option], hyperslab_data=scalar_data_copy
                     )
-                    print("key_output:", key_output)
+                    print("scalar_output:", scalar_output)
                     raise
-                print("key_output:", key_output)
-                temp[region_option][metric][key] = key_output[region_option][metric][key]
+                print("scalar_output:", scalar_output)
+                temp[region_option][metric][scalar] = scalar_output[region_option][metric][scalar]
 
-        scalar_data["RESULTS"] = temp
-        file_name = "{}_{}_{}_{}_scalar.json".format(
+        output["RESULTS"] = temp
+        file_name = "{}_{}_{}_{}.json".format(
             region_option, metric_option, "*", model_option
         )
         # print("hyperslab file name:", file_name)
+
     if output_file:
-        with open(os.path.join(DATA_DIRECTORY, file_name), "w") as write_file:
-            json.dump(scalar_data, write_file, sort_keys=True)
+        write_to_file(file_name, output)
 
     if upload:
-        print("uploading file to S3 Bucket")
-        scalar_data_json = json.dumps(scalar_data, ensure_ascii=False)
-        s3_resource = boto3.resource('s3')
-        file_name = file_name.replace(" ", "_")
-        s3 = boto3.resource('s3').Object(
-            BUCKET_NAME, file_name).put(Body=scalar_data_json)
+        upload_to_s3(file_name, output)
 
     return {"data": temp, "file_name": file_name}
 
@@ -562,9 +568,9 @@ if __name__ == "__main__":
     for index, combo in enumerate(combos):
         print("{}): {}".format(index, combo))
         if combo.count("*") == 1:
-            # extract_one_dimension(
-            #     combo, hyperslab_data=hyperslab_data, output_file=True, upload=True, DATA_DIRECTORY="json_data_files/Hyperslab_files")
-            continue
+            extract_one_dimension(
+                combo, hyperslab_data=hyperslab_data, output_file=True, upload=True, DATA_DIRECTORY="json_data_files/Hyperslab_files")
+            # continue
         else:
             extract_two_dimension(
                 combo, hyperslab_data=hyperslab_data, output_file=True, upload=True, DATA_DIRECTORY="json_data_files/Hyperslab_files")
