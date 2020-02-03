@@ -57,3 +57,4 @@ redis
 rq
 flask-session
 Flask-SQLAlchemy
+flask_marshmallow
