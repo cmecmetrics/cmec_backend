@@ -50,11 +50,4 @@ def create_app(test_config=None):
         # Create tables for our models
         db.create_all()
 
-        # TODO: get all metrics, regions, etc and store in constants
-        ALL_METRICS = {}
-        for metric_name in db.session.query(Scalar.metric).distinct():
-            ALL_METRICS[metric_name] = {}
-
-        print("ALL_METRICS:", ALL_METRICS)
-
         return app
