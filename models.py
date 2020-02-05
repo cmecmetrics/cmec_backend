@@ -11,7 +11,7 @@ class Region(db.Model):
     __tablename__ = 'region'
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String())
+    name = db.Column(db.String(), unique=True)
     metrics = relationship("Metric")
     # result_all = db.Column(JSON)
     # result_no_stop_words = db.Column(JSON)
