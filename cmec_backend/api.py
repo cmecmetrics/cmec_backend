@@ -76,7 +76,7 @@ def hyperslab():
     if region:
         hyperslab_structure = {region: {}}
     else:
-        hyperslab_structure = ALL_REGIONS
+        hyperslab_structure = copy.deepcopy(ALL_REGIONS)
 
     print("hyperslab_structure after region:", hyperslab_structure)
 
