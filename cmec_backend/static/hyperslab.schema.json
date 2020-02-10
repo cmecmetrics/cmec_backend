@@ -1,0 +1,57 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "http://cmec-backend-stage.herokuapp.com/hyperslab.schema.json",
+    "title": "Hyperslab",
+    "description": "A hyperslab in the ILAMB data",
+    "type": "object",
+    "properties": {
+        "region": {
+            "description": "The region of the hyperslab",
+            "type": "string"
+        },
+        "metrics": {
+            "description": "Metrics of the hyperslab",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "length": {
+                        "type": "number"
+                    },
+                    "width": {
+                        "type": "number"
+                    },
+                    "height": {
+                        "type": "number"
+                    }
+                }
+            },
+            "minItems": 0,
+            "uniqueItems": true
+        },
+    },
+    "required": [
+        "region"
+    ]
+}
+
+
+{
+    "region": "global",
+    "metrics": [
+        {
+            "metric": "Ecosystem and Carbon Cycle",
+            "scores": [
+                {
+                    "score": "Bias Score",
+                    "models": [
+                        {
+                            "model": "BCC-CSM2-MR",
+                            "score": -999
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+},
