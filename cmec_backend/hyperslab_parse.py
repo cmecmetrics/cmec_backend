@@ -3,6 +3,9 @@ import os
 import boto3
 import itertools
 import copy
+from cmec_backend.models import db, Scalar
+from flask import current_app
+from sqlalchemy import Table, MetaData, create_engine
 
 s3 = boto3.client('s3')
 BUCKET_NAME = "cmec-data"
@@ -33,110 +36,63 @@ MODEL_NAMES = [
     "MeanCMIP6",
 ]
 
-DATA_DIRECTORY = "chalicelib/json_data_files"
+DATA_DIRECTORY = "cmec_backend/static"
 S3 = boto3.resource('s3')
 
 
-def load_json_data():
+def load_json_data(json_file="test.json"):
     # load json object
-    with open("test.json") as scalar_json:
+    with open(json_file) as scalar_json:
         scalar_data = json.load(scalar_json)
     return scalar_data
 
 
-def write_json_file(obj):
-    with open("data_file.json", "w") as write_file:
-        json.dump(obj, write_file)
+arr = []
 
 
-def main():
-    scalar_data = load_json_data()
-    write_json_file(obj)
+def extract(obj, result_set, key):
+    """Recursively search for values of key in JSON tree."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            # print("k:", k)
+            # print("v:", v)
+            if key in k:
+                result_set.add(k)
+            if isinstance(v, (dict, list)):
+                extract(v, result_set, key)
+    elif isinstance(obj, list):
+        for item in obj:
+            extract(item, result_set, key)
+    return result_set
 
 
-def all_combinations(scalar_data):
+def all_combos(scalar_data):
     output = []
 
-    metric_catalogues = scalar_data.keys()
-    metric_catalogues_list = list(metric_catalogues)
-
-    regions = set(
-        [
-            x.split()[-1]
-            for x in scalar_data[metric_catalogues_list[0]].keys()
-            if x != "children"
-        ]
-    )
-
-    regions = list(regions)
-
-    scores = []
+    regions = scalar_data["RESULTS"].keys()
+    metrics_set = set()
     for region in regions:
-        for catalogue in metric_catalogues:
-            print("catalogue:", catalogue)
-            metric_obj = {}
-            metric_obj["metric"] = catalogue
-            metric_obj["scores"] = []
-            score_dict = {
-                key.rsplit(" ", 1)[0]: value
-                for (key, value) in scalar_data[catalogue].items()
-                if key != "children" and region in key
-            }
-            for score in score_dict.keys():
-                scores.append(score)
-            # scores.append(list(score_dict.keys()))
+        for key in scalar_data["RESULTS"][region].keys():
+            metrics_set.add(key)
+        # metrics_set.add(tuple(scalar_data["RESULTS"][region].keys()))
+    # metrics = [metrics_set.add(list(scalar_data["RESULTS"][region].keys()))
+    #            for region in regions]
+    # print("metrics:", list(metrics_set))
+    metrics = list(metrics_set)
 
-            metrics = scalar_data[catalogue]["children"]
-            if metrics:
-                for metric, metric_data in metrics.items():
-                    metric_child_obj = {}
-                    metric_child_obj["metric"] = "{}:{}".format(
-                        catalogue, metric)
-                    metric_child_obj["scores"] = []
-                    metric_score_dict = {
-                        key.rsplit(" ", 1)[0]: value
-                        for (key, value) in metric_data.items()
-                        if key != "children" and region in key
-                    }
-                    for metric_score in metric_score_dict.keys():
-                        scores.append(metric_score)
+    all_scores = set()
+    scores = extract(scalar_data, all_scores, "Score")
 
-    # print("scores:", scores)
     output.append(regions)
-    output.append(metric_catalogues_list)
-    output.append(list(set(scores)))
+    output.append(metrics)
+    output.append(list(scores))
     output.append(MODEL_NAMES)
-    for sublist in output:
-        sublist.append("*")
-    # print("output:", output)
+    # print("initial output:", output)
 
-    # print("combos: \n")
     combos = list(itertools.product(*output))
-    # print(list(itertools.product(*output)))
-    filtered = [x for x in combos if 0 < x.count("*") < 3]
-    # print("filtered:", filtered)
-    return filtered
+    # print("combos:", combos)
 
-
-def extract_values(obj, key):
-    """Recursively pull values of specified key from nested JSON."""
-    arr = []
-
-    def extract(obj, arr, key):
-        """Return all matching values in an object."""
-        if isinstance(obj, dict):
-            for k, v in obj.items():
-                if isinstance(v, (dict, list)):
-                    extract(v, arr, key)
-                elif k == key:
-                    arr.append({k: v})
-        elif isinstance(obj, list):
-            for item in obj:
-                extract(item, arr, key)
-        return arr
-
-    results = extract(obj, arr, key)
-    return results
+    return combos
 
 
 def reformat_json_for_postgres(scalar_data):
@@ -317,19 +273,6 @@ def reformat_json_for_hyperslabs(scalar_data):
         json.dump(output, write_file, sort_keys=True)
 
 
-def write_to_file(file_name, data, DATA_DIRECTORY="json_data_files/Hyperslab_files"):
-    file_name = file_name.replace(" ", "_")
-    with open(os.path.join(DATA_DIRECTORY, file_name), "w") as write_file:
-        json.dump(data, write_file, sort_keys=True)
-
-
-def upload_to_s3(file_name, data):
-    scalar_data_json = json.dumps(data, ensure_ascii=False)
-
-    file_name = file_name.replace(" ", "_")
-    S3.Object(BUCKET_NAME, file_name).put(Body=scalar_data_json)
-
-
 def extract_scalar(options_array, hyperslab_data=None, output_file=False):
     region, metric, scalar, model = options_array
     if not hyperslab_data:
@@ -343,236 +286,34 @@ def extract_scalar(options_array, hyperslab_data=None, output_file=False):
     except KeyError:
         output = -999
 
-    # scalar_data["RESULTS"] = {region: {metric: {scalar: {model: output}}}}
-
-    file_name = "{}_{}_{}_{}_scalar.json".format(region, metric, scalar, model)
-    if output_file:
-        write_to_file(file_name, output)
-
-    return {"data": {model: output}, "file_name": file_name}
+    return output
 
 
-def extract_one_dimension(options_array, hyperslab_data=None, output_file=False, upload=False, DATA_DIRECTORY="json_data_files"):
-    region_option, metric_option, scalar_option, model_option = options_array
-    if not hyperslab_data:
-        with open("json_data_files/ilamb_data_hyperslab_format.json") as scalar_json:
-            scalar_data = json.load(scalar_json)
-    else:
-        scalar_data = hyperslab_data
-
-    scalar_data_copy = copy.deepcopy(hyperslab_data)
-
-    json_structure = scalar_data["DIMENSIONS"]["json_structure"]
-
-    output = {"RESULTS": {}}
-    if region_option == "*":
-        keys = scalar_data["RESULTS"].keys()
-        temp = {}
-        for key in keys:
-            temp[key] = {}
-            metrics = [metric_name for metric_name in scalar_data["RESULTS"]
-                       [key].keys() if metric_option in metric_name]
-            for metric in metrics:
-                temp[key][metric] = {}
-                temp[key][metric] = {
-                    scalar_option: extract_scalar(
-                        [key, metric, scalar_option, model_option], hyperslab_data=scalar_data_copy)["data"]
-                }
-        output["RESULTS"] = temp
-        file_name = "{}_{}_{}_{}.json".format(
-            "*", metric_option, scalar_option, model_option)
-    if metric_option == "*":
-        metrics = scalar_data["RESULTS"][region_option].keys()
-        temp = {region_option: {}}
-        for metric in metrics:
-            temp[region_option][metric] = {
-                scalar_option: extract_scalar(
-                    [region_option, metric, scalar_option, model_option], hyperslab_data=scalar_data_copy)["data"]
-            }
-
-        output["RESULTS"] = temp
-        file_name = "{}_{}_{}_{}.json".format(
-            region_option, "*", scalar_option, model_option
-        )
-
-    if scalar_option == "*":
-        scalars = scalar_data["RESULTS"][region_option][metric_option].keys()
-        metrics = [
-            metric_name
-            for metric_name in scalar_data["RESULTS"][region_option].keys()
-            if metric_option in metric_name
-        ]
-        temp = {region_option: {}}
-        for metric in metrics:
-            temp[region_option][metric] = {}
-            for scalar in scalars:
-                temp[region_option][metric][scalar] = extract_scalar(
-                    [region_option, metric, scalar, model_option], hyperslab_data=scalar_data_copy)["data"]
-
-        output["RESULTS"] = temp
-        file_name = "{}_{}_{}_{}.json".format(
-            region_option, metric_option, "*", model_option
-        )
-    if model_option == "*":
-        temp = {region_option: {}}
-        metrics = [
-            metric_name
-            for metric_name in scalar_data["RESULTS"][region_option].keys()
-            if metric_option in metric_name
-        ]
-        for metric in metrics:
-            try:
-                models = scalar_data["RESULTS"][region_option][metric][
-                    scalar_option
-                ].keys()
-            except KeyError:
-                models = []
-            temp[region_option][metric] = {scalar_option: {}}
-            for model in models:
-                temp[region_option][metric][scalar_option][model] = extract_scalar(
-                    [region_option, metric, scalar_option,
-                        model], hyperslab_data=scalar_data
-                )["data"].get(model)
-
-        output["RESULTS"] = temp
-        file_name = "{}_{}_{}_{}.json".format(
-            region_option, metric_option, scalar_option, "*"
-        )
-
-    if output_file:
-        write_to_file(file_name, output)
-
-    if upload:
-        upload_to_s3(file_name, output)
-
-    return {"data": temp, "file_name": file_name}
-
-
-def extract_two_dimension(options_array, hyperslab_data=None, output_file=False, upload=False, DATA_DIRECTORY="json_data_files"):
-    region_option, metric_option, scalar_option, model_option = options_array
-    if not hyperslab_data:
-        with open("json_data_files/ilamb_data_hyperslab_format.json") as scalar_json:
-            scalar_data = json.load(scalar_json)
-    else:
-        scalar_data = hyperslab_data
-
-    scalar_data_copy = copy.deepcopy(hyperslab_data)
-    print("extract two dimension called.")
-
-    json_structure = scalar_data["DIMENSIONS"]["json_structure"]
-    output = {"RESULTS": {}}
-
-    temp = {}
-    if region_option == "*":
-        regions = scalar_data["RESULTS"].keys()
-        for region in regions:
-            key_output = extract_one_dimension(
-                [region, metric_option, scalar_option, model_option], hyperslab_data=scalar_data_copy)["data"]
-            temp[region] = key_output[region]
-            # output["RESULTS"][region] = key_output[region]
-
-        output["RESULTS"] = temp
-        file_name = "{}_{}_{}_{}.json".format(
-            "*", metric_option, scalar_option, model_option)
-
-    elif metric_option == "*":
-        metrics = scalar_data["RESULTS"][region_option].keys()
-        temp = {region_option: {}}
-        for metric in metrics:
-            key_output = extract_one_dimension(
-                [region_option, metric, scalar_option,
-                    model_option], hyperslab_data=scalar_data_copy
-            )["data"]
-            temp[region_option][metric] = key_output[region_option][metric]
-
-        output["RESULTS"] = temp
-        file_name = "{}_{}_{}_{}.json".format(
-            region_option, "*", scalar_option, model_option)
-
-    elif scalar_option == "*":
-        temp = {region_option: {}}
-        metrics = [
-            metric_name
-            for metric_name in scalar_data["RESULTS"][region_option].keys()
-            if metric_option in metric_name
-        ]
-        for metric in metrics:
-            temp[region_option][metric] = {}
-            scalars = scalar_data["RESULTS"][region_option][metric].keys()
-            print("metric:", metric)
-            for scalar in scalars:
-                try:
-                    scalar_output = extract_one_dimension(
-                        [region_option, metric, scalar,
-                            model_option], hyperslab_data=scalar_data_copy
-                    )["data"]
-                except TypeError:
-                    print("region_option:", region_option)
-                    print("metric:", metric)
-                    print("scalar:", scalar)
-                    print("model_option:", model_option)
-                    scalar_output = extract_one_dimension(
-                        [region_option, metric, scalar,
-                            model_option], hyperslab_data=scalar_data_copy
-                    )
-                    print("scalar_output:", scalar_output)
-                    raise
-                print("scalar_output:", scalar_output)
-                temp[region_option][metric][scalar] = scalar_output[region_option][metric][scalar]
-
-        output["RESULTS"] = temp
-        file_name = "{}_{}_{}_{}.json".format(
-            region_option, metric_option, "*", model_option
-        )
-        # print("hyperslab file name:", file_name)
-
-    if output_file:
-        write_to_file(file_name, output)
-
-    if upload:
-        upload_to_s3(file_name, output)
-
-    return {"data": temp, "file_name": file_name}
+def init_db():
+    with current_app.app_context():
+        engine = create_engine(os.environ.get('SQLALCHEMY_DATABASE_URI'))
+        scalar_data = load_json_data(os.path.join(
+            DATA_DIRECTORY, "ilamb_data_hyperslab_format.json"))
+        all_scores = set()
+        scores = extract(scalar_data, all_scores, "Score")
+        print('scores:', scores)
+        combos = all_combos(scalar_data)
+        for combo in combos:
+            print(extract_scalar(combo, hyperslab_data=scalar_data))
+            region, metric, scalar, model = combo
+            scalar_value = extract_scalar(combo, hyperslab_data=scalar_data)
+            scalar_object = Scalar(
+                region=region,
+                metric=metric,
+                scalar=scalar,
+                model=model,
+                value=scalar_value
+            )
+            # Adds new User record to database
+            db.session.add(scalar_object)
+        db.session.commit()  # Commits all changes
+        print("Database populated")
 
 
 if __name__ == "__main__":
-    # extract_scalar(
-    #     ["global", "Ecosystem and Carbon Cycle", "Bias Score", "BCC-CSM2-MR"]
-    # )
-
-    # extract_one_dimension(
-    #     ["*", "Ecosystem and Carbon Cycle", "Bias Score", "BCC-CSM2-MR"], output_file=True
-    # )
-    # output = extract_one_dimension(
-    #     ["global", "*", "Bias Score", "BCC-CSM2-MR"], output_file=True
-    # )
-    # print("output:", output)
-    # extract_one_dimension(
-    #     ["global", "Ecosystem and Carbon Cycle", "*", "BCC-CSM2-MR"], output_file=True
-    # )
-    # extract_one_dimension(["global", "Ecosystem and Carbon Cycle", "Bias Score", "*"], output_file=True)
-    # extract_two_dimension(["*", "*", "Bias Score", "BCC-CSM2-MR"], output_file=True)
-    # extract_two_dimension(["global", "*", "*", "BCC-CSM2-MR"], output_file=True)
-    # extract_two_dimension(
-    #     ["global", "Ecosystem and Carbon Cycle", "*", "*"], output_file=True
-    # )
-    scalar_data = load_json_data()
-    # # reformat_json_for_postgres(scalar_data)
-    combos = all_combinations(scalar_data)
-
-    with open("json_data_files/ilamb_data_hyperslab_format.json") as scalar_json:
-        hyperslab_data = json.load(scalar_json)
-    # output = extract_one_dimension(
-    #     ["*", "Ecosystem and Carbon Cycle", 'Overall Score', 'bcc-csm1-1'])
-    # print("output:", output)
-    for index, combo in enumerate(combos):
-        print("{}): {}".format(index, combo))
-        if combo.count("*") == 1:
-            extract_one_dimension(
-                combo, hyperslab_data=hyperslab_data, output_file=True, upload=True, DATA_DIRECTORY="json_data_files/Hyperslab_files")
-            # continue
-        else:
-            extract_two_dimension(
-                combo, hyperslab_data=hyperslab_data, output_file=True, upload=True, DATA_DIRECTORY="json_data_files/Hyperslab_files")
-
-    print("Upload completed")
+    init_db()
