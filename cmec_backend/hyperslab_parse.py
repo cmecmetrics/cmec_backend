@@ -7,9 +7,6 @@ from cmec_backend.models import db, Scalar
 from flask import current_app
 from sqlalchemy import Table, MetaData, create_engine
 
-s3 = boto3.client('s3')
-BUCKET_NAME = "cmec-data"
-
 MODEL_NAMES = [
     "bcc-csm1-1",
     "bcc-csm1-1-m",
@@ -37,7 +34,6 @@ MODEL_NAMES = [
 ]
 
 DATA_DIRECTORY = "cmec_backend/static"
-S3 = boto3.resource('s3')
 
 
 def load_json_data(json_file="test.json"):
@@ -45,54 +41,6 @@ def load_json_data(json_file="test.json"):
     with open(json_file) as scalar_json:
         scalar_data = json.load(scalar_json)
     return scalar_data
-
-
-arr = []
-
-
-def extract(obj, result_set, key):
-    """Recursively search for values of key in JSON tree."""
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            # print("k:", k)
-            # print("v:", v)
-            if key in k:
-                result_set.add(k)
-            if isinstance(v, (dict, list)):
-                extract(v, result_set, key)
-    elif isinstance(obj, list):
-        for item in obj:
-            extract(item, result_set, key)
-    return result_set
-
-
-def all_combos(scalar_data):
-    output = []
-
-    regions = scalar_data["RESULTS"].keys()
-    metrics_set = set()
-    for region in regions:
-        for key in scalar_data["RESULTS"][region].keys():
-            metrics_set.add(key)
-        # metrics_set.add(tuple(scalar_data["RESULTS"][region].keys()))
-    # metrics = [metrics_set.add(list(scalar_data["RESULTS"][region].keys()))
-    #            for region in regions]
-    # print("metrics:", list(metrics_set))
-    metrics = list(metrics_set)
-
-    all_scores = set()
-    scores = extract(scalar_data, all_scores, "Score")
-
-    output.append(regions)
-    output.append(metrics)
-    output.append(list(scores))
-    output.append(MODEL_NAMES)
-    # print("initial output:", output)
-
-    combos = list(itertools.product(*output))
-    # print("combos:", combos)
-
-    return combos
 
 
 def reformat_json_for_postgres(scalar_data):
@@ -287,33 +235,3 @@ def extract_scalar(options_array, hyperslab_data=None, output_file=False):
         output = -999
 
     return output
-
-
-def init_db():
-    with current_app.app_context():
-        engine = create_engine(os.environ.get('SQLALCHEMY_DATABASE_URI'))
-        scalar_data = load_json_data(os.path.join(
-            DATA_DIRECTORY, "ilamb_data_hyperslab_format.json"))
-        all_scores = set()
-        scores = extract(scalar_data, all_scores, "Score")
-        print('scores:', scores)
-        combos = all_combos(scalar_data)
-        for combo in combos:
-            print(extract_scalar(combo, hyperslab_data=scalar_data))
-            region, metric, scalar, model = combo
-            scalar_value = extract_scalar(combo, hyperslab_data=scalar_data)
-            scalar_object = Scalar(
-                region=region,
-                metric=metric,
-                scalar=scalar,
-                model=model,
-                value=scalar_value
-            )
-            # Adds new User record to database
-            db.session.add(scalar_object)
-        db.session.commit()  # Commits all changes
-        print("Database populated")
-
-
-if __name__ == "__main__":
-    init_db()
