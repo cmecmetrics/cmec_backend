@@ -67,7 +67,7 @@ def hyperslab():
     print("hyperslab_structure at beginning:", hyperslab_structure)
     # hyperslab_structure.clear()
     data = request.json
-    region_param, metric, scalar, model_param = [
+    region_param, metric, scalar_param, model_param = [
         data["region"], data["metric"], data["scalar"], data["model"]]
 
     if region_param:
@@ -88,15 +88,15 @@ def hyperslab():
     # print("ALL_METRICS after hyperslab_structure after metric:", ALL_METRICS)
     print("region_param:", region_param)
     print("metric:", metric)
-    print("scalar:", scalar)
+    print("scalar_param:", scalar_param)
     print("model_param:", model_param)
     query = db.session.query(Scalar)
     if region_param:
         query = query.filter(Scalar.region == region_param)
     if metric:
         query = query.filter(Scalar.metric.contains(metric))
-    if scalar:
-        query = query.filter(Scalar.scalar == scalar)
+    if scalar_param:
+        query = query.filter(Scalar.scalar == scalar_param)
     if model_param:
         query = query.filter(Scalar.model == model_param)
     query.group_by(Scalar.metric, Scalar.model)
@@ -105,7 +105,7 @@ def hyperslab():
     schema_output = scalar_schema.dump(output)
     if not model_param:
         for result in schema_output:
-            print("result:", result)
+            # print("result:", result)
             result_region = result["region"]
             result_metric = result["metric"]
             result_scalar = result["scalar"]
@@ -116,11 +116,27 @@ def hyperslab():
                 result_scalar, {})
             hyperslab_structure[result_region][result_metric][result_scalar].setdefault(
                 result_model, result_value)
+    elif not scalar_param:
+        # Scalars by column
+        print("scalar by column format conditional")
+        hyperslab_structure = {}
+        for result in schema_output:
+            result_region = result["region"]
+            result_metric = result["metric"]
+            result_scalar = result["scalar"]
+            result_model = result["model"]
+            result_value = result["value"]
+            hyperslab_structure.setdefault(result_region, {})
+            hyperslab_structure[result_region].setdefault(result_metric, {})
+            hyperslab_structure[result_region][result_metric].setdefault(
+                result_model, {})
+            hyperslab_structure[result_region][result_metric][result_model].setdefault(
+                result_scalar, result_value)
     else:
         # Regions by column format
         hyperslab_structure = {}
         for result in schema_output:
-            print("result:", result)
+            # print("result:", result)
             result_region = result["region"]
             result_metric = result["metric"]
             result_scalar = result["scalar"]
