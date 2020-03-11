@@ -117,6 +117,7 @@ def hyperslab():
             hyperslab_structure[result_region][result_metric][result_scalar].setdefault(
                 result_model, result_value)
     else:
+        # Regions by column format
         hyperslab_structure = {}
         for result in schema_output:
             print("result:", result)
