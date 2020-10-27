@@ -14,7 +14,7 @@ chalice==1.12.0
 chardet==3.0.4
 Click==7.0
 colorama==0.4.1
-cryptography==2.8
+cryptography==3.2
 docutils==0.15.2
 enum-compat==0.0.3
 fabric==2.5.0
