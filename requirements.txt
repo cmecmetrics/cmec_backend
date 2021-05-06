@@ -19,7 +19,7 @@ docutils==0.15.2
 enum-compat==0.0.3
 fabric==2.5.0
 Flask==1.1.1
-Flask-Cors==3.0.8
+Flask-Cors==3.0.9
 Flask-Migrate==2.5.2
 Flask-Script==2.0.6
 flask-sqlalchemy
