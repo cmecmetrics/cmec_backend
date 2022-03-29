@@ -33,7 +33,7 @@ jmespath==0.9.4
 Mako==1.1.0
 MarkupSafe==1.1.1
 multidict==4.5.2
-paramiko==2.6.0
+paramiko==2.10.1
 prettytable==0.7.2
 psycopg2==2.8.4
 pyasn1==0.4.7
